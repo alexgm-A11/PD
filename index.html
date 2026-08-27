@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MédicaMente — Generador de cuestionarios</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="#" aria-label="MédicaMente inicio"><span class="brand-mark">M</span><span>Médica<span class="accent">Mente</span></span></a>
+      <button id="settingsBtn" class="icon-btn" type="button" aria-label="Configurar IA">⚙</button>
+    </header>
+
+    <section id="uploadView" class="hero">
+      <div class="eyebrow">ENTRENAMIENTO MÉDICO INTELIGENTE</div>
+      <h1>Convierte tu PDF en un<br><em>examen que te desafía.</em></h1>
+      <p class="lead">Sube apuntes, diapositivas o capítulos. El sistema identifica perlas ENAM, contenido resaltado y conceptos de alta frecuencia para crear preguntas abiertas sin repeticiones.</p>
+
+      <label id="dropzone" class="dropzone" for="pdfInput">
+        <input id="pdfInput" type="file" accept="application/pdf,.pdf" hidden>
+        <span class="upload-icon">↥</span>
+        <strong>Arrastra tu PDF aquí</strong>
+        <span>o haz clic para seleccionarlo</span>
+        <small>PDF · máximo 50 MB</small>
+      </label>
+
+      <div class="quick-options" aria-label="Opciones del cuestionario">
+        <label><span>Cantidad</span><select id="quickCount"><option value="10">10 preguntas</option><option value="15" selected>15 preguntas</option><option value="20">20 preguntas</option><option value="30">30 preguntas</option></select></label>
+        <label><span>Enfoque</span><select id="focusSelect"><option value="ENAM" selected>Perlas y alta frecuencia ENAM</option><option value="mixed">Clínica integral</option><option value="anatomy">Anatomía y fisiología</option><option value="microbiology">Microbiología y parasitología</option><option value="treatment">Diagnóstico y tratamiento</option></select></label>
+        <label><span>Dificultad</span><select id="levelSelect"><option value="intermediate">Intermedio</option><option value="advanced" selected>Avanzado</option><option value="expert">Experto</option></select></label>
+        <label><span>Formato</span><select id="formatSelect"><option value="balanced" selected>50% casos · 50% conceptos</option><option value="clinical">Mayoría casos clínicos</option><option value="recall">Mayoría recuerdo activo</option><option value="integrated">Preguntas integradoras</option></select></label>
+      </div>
+
+      <div class="features">
+        <div><span>01</span><strong>Casos clínicos</strong><p>Razonamiento profundo estilo USMLE Step 2.</p></div>
+        <div><span>02</span><strong>Recuerdo activo</strong><p>Anatomía, fisiología y microbiología.</p></div>
+        <div><span>03</span><strong>Sin repeticiones</strong><p>Progreso guardado y preguntas únicas.</p></div>
+      </div>
+    </section>
+
+    <section id="processingView" class="center hidden" aria-live="polite">
+      <div class="loader"><span></span><span></span><span></span></div>
+      <p class="eyebrow">ANALIZANDO DOCUMENTO</p>
+      <h2 id="processingTitle">Leyendo tu PDF…</h2>
+      <p id="processingStatus">Extrayendo conceptos y hallazgos relevantes.</p>
+    </section>
+
+    <section id="quizView" class="quiz hidden">
+      <div class="quiz-head">
+        <div><div id="category" class="eyebrow">CASO CLÍNICO</div><h2 id="quizTitle">Evaluación avanzada</h2></div>
+        <div class="score"><span id="scoreText">0 correctas</span><button id="newPdfBtn" class="text-btn" type="button">Cambiar PDF</button></div>
+      </div>
+      <div class="progress"><span id="progressBar"></span></div>
+      <div class="question-card">
+        <div class="question-meta"><span id="questionNumber">Pregunta 1</span><span id="difficulty">Avanzado</span></div>
+        <p id="questionText" class="question-text"></p>
+        <div id="choiceArea">
+          <span class="answer-label">Selecciona una respuesta</span>
+          <div id="choices" class="choices" role="radiogroup" aria-label="Alternativas"></div>
+        </div>
+        <div id="writtenArea" class="hidden">
+          <label for="answerInput">Tu respuesta</label>
+          <textarea id="answerInput" rows="6" placeholder="Escribe tu razonamiento clínico…"></textarea>
+        </div>
+        <div class="actions"><button id="submitBtn" class="primary" type="button">Evaluar respuesta</button><button id="skipBtn" class="secondary" type="button">Omitir</button></div>
+      </div>
+      <div id="feedback" class="feedback hidden" aria-live="polite">
+        <div id="feedbackLabel" class="feedback-label"></div>
+        <h3>Respuesta esperada</h3><p id="expectedAnswer"></p>
+        <details><summary>Ver fuente en el documento</summary><p id="sourceText"></p></details>
+        <button id="nextBtn" class="primary" type="button">Siguiente pregunta →</button>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="settings">
+      <div class="dialog-head"><h2>Configuración de IA</h2><button value="cancel" class="icon-btn" aria-label="Cerrar">×</button></div>
+      <p>Para generación clínica profunda, conecta un endpoint compatible con OpenAI. La clave solo se conserva en esta pestaña.</p>
+      <label>Endpoint<input id="endpointInput" value="https://api.openai.com/v1/chat/completions"></label>
+      <label>Modelo<input id="modelInput" value="gpt-4.1-mini"></label>
+      <label>API key<input id="keyInput" type="password" placeholder="sk-…" autocomplete="off"></label>
+      <label>Número de preguntas<input id="countInput" type="number" min="6" max="40" value="15"></label>
+      <button id="saveSettings" class="primary" value="default">Guardar</button>
+    </form>
+  </dialog>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs" type="module"></script>
+  <script src="app.js" type="module"></script>
+  <script src="preferences.js" defer></script>
+</body>
+</html>
+
