@@ -8,6 +8,7 @@ let questions = [],
   correct = 0,
   sourceName = "";
 let selectedFiles = [];
+let performance = {};
 const views = ["#uploadView", "#processingView", "#quizView"];
 function show(id) {
   views.forEach((v) => $(v).classList.toggle("hidden", v !== id));
@@ -187,6 +188,7 @@ async function process(fileList) {
     questions.sort(() => Math.random() - 0.5);
     index = 0;
     correct = 0;
+    performance = {};
     render();
     show("#quizView");
   } catch (e) {
@@ -196,6 +198,10 @@ async function process(fileList) {
 }
 function render() {
   const q = questions[index];
+  $("#resultSummary").classList.add("hidden");
+  $("#questionText").classList.remove("hidden");
+  $("#submitBtn").classList.remove("hidden");
+  $("#skipBtn").textContent = "Omitir";
   $("#category").textContent = q.type.toUpperCase();
   $("#quizTitle").textContent = sourceName;
   $("#questionNumber").textContent =
@@ -257,6 +263,10 @@ function evaluate() {
       hits >= Math.min(3, Math.max(1, Math.floor(new Set(terms).size * 0.08)));
   }
   if (good) correct++;
+  const category = q.type || "Concepto clave";
+  performance[category] ||= { correct: 0, total: 0 };
+  performance[category].total++;
+  if (good) performance[category].correct++;
   $("#feedbackLabel").textContent = good
     ? "✓ Respuesta con conceptos clave"
     : "↗ Revisa y completa tu razonamiento";
@@ -275,14 +285,38 @@ function next() {
     render();
     scrollTo({ top: 0, behavior: "smooth" });
   } else {
-    $("#questionText").textContent =
-      `Completaste el examen: ${correct} de ${questions.length} respuestas con conceptos clave.`;
-    $("#answerInput").classList.add("hidden");
+    const percentage = Math.round((correct / questions.length) * 100);
+    const categories = Object.entries(performance).sort(
+      (a, b) => b[1].correct / b[1].total - a[1].correct / a[1].total,
+    );
+    $("#questionText").classList.add("hidden");
+    $("#choiceArea").classList.add("hidden");
+    $("#writtenArea").classList.add("hidden");
     $("#submitBtn").classList.add("hidden");
     $("#skipBtn").textContent = "Crear otro examen";
     $("#feedback").classList.add("hidden");
     $("#progressBar").style.width = "100%";
+    const summary = $("#resultSummary");
+    summary.innerHTML = `<p class="result-score">${correct}/${questions.length} · ${percentage}%</p><p>Examen completado. El siguiente intento reorganizará las preguntas y alternativas sin recargar la página.</p><div class="result-grid"><div class="result-box"><strong>Fortaleza</strong><span></span></div><div class="result-box"><strong>Por reforzar</strong><span></span></div></div>`;
+    const labels = summary.querySelectorAll(".result-box span");
+    labels[0].textContent = categories[0]?.[0] || "Sin datos suficientes";
+    labels[1].textContent = categories.at(-1)?.[0] || "Sin datos suficientes";
+    summary.classList.remove("hidden");
   }
+}
+function restartQuiz() {
+  questions.sort(() => Math.random() - 0.5);
+  questions.forEach((q) => {
+    if (!Array.isArray(q.options)) return;
+    const correctOption = q.options[q.correctIndex];
+    q.options.sort(() => Math.random() - 0.5);
+    q.correctIndex = q.options.indexOf(correctOption);
+  });
+  index = 0;
+  correct = 0;
+  performance = {};
+  render();
+  scrollTo({ top: 0, behavior: "smooth" });
 }
 function formatSize(bytes) {
   return bytes < 1024 * 1024
@@ -349,10 +383,14 @@ $("#submitBtn").onclick = evaluate;
 $("#nextBtn").onclick = next;
 $("#skipBtn").onclick = () => {
   if (index >= questions.length - 1) {
-    location.reload();
+    restartQuiz();
   } else next();
 };
-$("#newPdfBtn").onclick = () => location.reload();
+$("#newPdfBtn").onclick = () => {
+  selectedFiles = [];
+  renderFileQueue();
+  show("#uploadView");
+};
 $("#settingsBtn").onclick = () => $("#settingsDialog").showModal();
 $("#saveSettings").onclick = () => {
   sessionStorage.setItem("medKey", $("#keyInput").value);
