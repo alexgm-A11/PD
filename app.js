@@ -78,12 +78,12 @@ function localQuestions(pages, count) {
       .sort(() => Math.random() - 0.5);
     out.push({
       type: "Concepto clave",
-      question: `Según el contenido estudiado en ${x.document}, ¿cuál de las siguientes afirmaciones es correcta?`,
+      question: `Pregunta ${i + 1}: ¿cuál de las siguientes afirmaciones describe correctamente el concepto médico evaluado?`,
       answer: x.text,
       mode: written ? "written" : "choice",
       options,
       correctIndex: options.indexOf(x.text.slice(0, 210)),
-      source: `${x.document}, página ${x.page}: ${x.text}`,
+      source: `Fuente interna, página ${x.page}: ${x.text}`,
     });
   }
   return unique(out);
@@ -102,7 +102,22 @@ async function aiQuestions(pages, count) {
   const focus = sessionStorage.getItem("medFocus") || "ENAM";
   const level = sessionStorage.getItem("medLevel") || "advanced";
   const format = sessionStorage.getItem("medFormat") || "balanced";
-  const prompt = `Analiza de forma conjunta todos los PDFs y genera ${count} preguntas médicas de selección múltiple en español. Enfoque solicitado: ${focus}. Dificultad: ${level}. Formato: ${format}. REGLAS OBLIGATORIAS: 1) El enunciado nunca debe copiar, citar ni mostrar la frase que contiene la respuesta. 2) No reveles la respuesta correcta en el contexto ni uses pistas obvias. 3) Si el material contiene información clínica suficiente, crea casos clínicos nuevos y coherentes con edad, síntomas, antecedentes y hallazgos; no inventes datos que contradigan la fuente. 4) Si no hay base clínica suficiente, formula preguntas conceptuales directas, sin forzar casos clínicos. 5) Cada pregunta tiene exactamente 4 alternativas plausibles y una sola correcta. 6) Distribuye correctIndex de forma equilibrada y aleatoria entre 0, 1, 2 y 3. 7) No repitas preguntas, conceptos ni alternativas. 8) Prioriza contenido resaltado textual, perlas ENAM y temas de alta frecuencia. 9) La explicación aparece solo después de responder. 10) Cita documento y página en source. Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"enunciado sin respuesta","options":["alternativa A","alternativa B","alternativa C","alternativa D"],"correctIndex":0,"answer":"explicación razonada de la opción correcta y por qué las demás no lo son","source":"Documento X, página N: fundamento breve"}]}. MATERIAL:\n${material}`;
+  const prompt = `Realiza primero un análisis médico interno de todos los PDFs: identifica temas centrales, afirmaciones examinables, perlas ENAM, relaciones causa-efecto, mecanismos fisiopatológicos, criterios diagnósticos, tratamientos, anatomía relevante y errores frecuentes. Después selecciona los conceptos de mayor valor educativo y genera ${count} preguntas de selección múltiple en español. Enfoque: ${focus}. Dificultad: ${level}. Formato: ${format}.
+
+REGLAS OBLIGATORIAS:
+1) Evalúa el contenido interno; nunca menciones nombres de archivos, PDFs, documentos, diapositivas, autores ni expresiones como “según el material”.
+2) El enunciado no puede copiar ni citar la oración que contiene la respuesta. Tampoco debe revelar la respuesta con pistas léxicas.
+3) Cuando haya base clínica, transforma el conocimiento en un caso clínico nuevo, breve y realista con datos discriminativos. Pregunta por diagnóstico, mecanismo, prueba confirmatoria, complicación o conducta.
+4) Cuando no haya base clínica suficiente, crea una pregunta conceptual clara. No inventes pacientes ni datos clínicos sin sustento.
+5) Integra conceptos de distintos apartados cuando exista una relación médica válida.
+6) Cada pregunta tiene exactamente cuatro alternativas plausibles, homogéneas en longitud y categoría, con una sola correcta.
+7) Los distractores deben representar errores clínicos razonables; evita opciones absurdas, “todas”, “ninguna” y pistas gramaticales.
+8) Equilibra y aleatoriza correctIndex entre 0, 1, 2 y 3. No repitas conceptos, casos ni alternativas.
+9) La explicación debe justificar la correcta y descartar brevemente cada distractor; solo será visible después de responder.
+10) source debe usar únicamente “Fuente interna, página N” seguido de un fundamento breve, sin nombres de archivos.
+11) Prioriza lo marcado como ENAM, perla, importante, frecuente, diagnóstico, tratamiento, complicación o mecanismo.
+
+Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"enunciado autónomo sin mencionar la fuente","options":["A","B","C","D"],"correctIndex":0,"answer":"explicación razonada","source":"Fuente interna, página N: fundamento breve"}]}. MATERIAL PARA ANÁLISIS INTERNO:\n${material}`;
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -114,11 +129,12 @@ async function aiQuestions(pages, count) {
       messages: [
         {
           role: "system",
-          content: "Eres docente experto en medicina y diseño de evaluaciones.",
+          content:
+            "Eres un comité de docentes médicos expertos en razonamiento clínico, ENAM y diseño psicométrico. Analiza primero, redacta después y evita cualquier filtración de la respuesta.",
         },
         { role: "user", content: prompt },
       ],
-      temperature: 0.7,
+      temperature: 0.45,
       response_format: { type: "json_object" },
     }),
   });
@@ -151,7 +167,9 @@ async function process(fileList) {
     if (!files.length) throw Error("Selecciona al menos un archivo PDF.");
     if (files.length > 10) throw Error("Puedes subir un máximo de 10 PDFs.");
     sourceName =
-      files.length === 1 ? files[0].name : `${files.length} PDFs combinados`;
+      files.length === 1
+        ? "1 PDF analizado"
+        : `${files.length} PDFs analizados`;
     show("#processingView");
     $("#processingTitle").textContent = "Leyendo tus PDFs…";
     const pages = [];
