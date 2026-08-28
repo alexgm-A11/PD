@@ -7,6 +7,7 @@ let questions = [],
   index = 0,
   correct = 0,
   sourceName = "";
+let selectedFiles = [];
 const views = ["#uploadView", "#processingView", "#quizView"];
 function show(id) {
   views.forEach((v) => $(v).classList.toggle("hidden", v !== id));
@@ -265,10 +266,53 @@ function next() {
     $("#progressBar").style.width = "100%";
   }
 }
-$("#pdfInput").addEventListener(
-  "change",
-  (e) => e.target.files.length && process(e.target.files),
-);
+function formatSize(bytes) {
+  return bytes < 1024 * 1024
+    ? `${Math.ceil(bytes / 1024)} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+function addFiles(fileList) {
+  const incoming = Array.from(fileList || []).slice(0, 1);
+  for (const file of incoming) {
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+    if (!isPdf) continue;
+    if (file.size > 50 * 1024 * 1024) {
+      alert(`${file.name} supera el límite de 50 MB.`);
+      continue;
+    }
+    const duplicate = selectedFiles.some(
+      (item) => item.name === file.name && item.size === file.size,
+    );
+    if (!duplicate && selectedFiles.length < 10) selectedFiles.push(file);
+  }
+  if (incoming.length && selectedFiles.length >= 10)
+    $("#dropzone strong").textContent = "Límite de 10 PDFs alcanzado";
+  renderFileQueue();
+}
+function renderFileQueue() {
+  $("#fileQueue").classList.toggle("hidden", !selectedFiles.length);
+  $("#fileCount").textContent = `${selectedFiles.length} de 10`;
+  $("#fileList").innerHTML = "";
+  selectedFiles.forEach((file, fileIndex) => {
+    const item = document.createElement("li");
+    item.className = "file-item";
+    item.innerHTML = `<div class="file-info"><strong></strong><span>${formatSize(file.size)}</span></div><button type="button" class="remove-file">Quitar</button>`;
+    item.querySelector("strong").textContent = file.name;
+    item.querySelector("button").addEventListener("click", () => {
+      selectedFiles.splice(fileIndex, 1);
+      $("#dropzone strong").textContent = "Agrega un PDF";
+      renderFileQueue();
+    });
+    $("#fileList").appendChild(item);
+  });
+}
+$("#pdfInput").addEventListener("change", (e) => {
+  addFiles(e.target.files);
+  e.target.value = "";
+});
+$("#acceptFilesBtn").addEventListener("click", () => process(selectedFiles));
 const dz = $("#dropzone");
 ["dragenter", "dragover"].forEach((x) =>
   dz.addEventListener(x, (e) => {
@@ -282,7 +326,7 @@ const dz = $("#dropzone");
     dz.classList.remove("drag");
   }),
 );
-dz.addEventListener("drop", (e) => process(e.dataTransfer.files));
+dz.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
 $("#submitBtn").onclick = evaluate;
 $("#nextBtn").onclick = next;
 $("#skipBtn").onclick = () => {
