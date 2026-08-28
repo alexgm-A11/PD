@@ -9,6 +9,9 @@ let questions = [],
   sourceName = "";
 let selectedFiles = [];
 let performance = {};
+let sourcePages = [];
+const usedQuestionKeys = new Set();
+const usedQuestionTexts = [];
 const views = ["#uploadView", "#processingView", "#quizView"];
 function show(id) {
   views.forEach((v) => $(v).classList.toggle("hidden", v !== id));
@@ -26,6 +29,47 @@ function unique(items) {
     if (seen.has(k)) return false;
     seen.add(k);
     return true;
+  });
+}
+function questionKey(question) {
+  return clean(question || "")
+    .toLowerCase()
+    .replace(/[^a-záéíóúñ0-9]/g, "")
+    .slice(0, 140);
+}
+function normalizeQuestions(items) {
+  return unique(
+    (Array.isArray(items) ? items : []).map((q) => {
+      const options = (q.options || []).map((option) =>
+        typeof option === "string" ? option : option.text || option.label || "",
+      );
+      let correctIndex = Number(q.correctIndex);
+      if (!Number.isInteger(correctIndex) && typeof q.correct === "string")
+        correctIndex = Math.max(0, q.correct.toUpperCase().charCodeAt(0) - 65);
+      return {
+        type: q.type || q.category || "Concepto clave",
+        mode: "choice",
+        question: clean(q.question || q.pregunta || ""),
+        options,
+        correctIndex,
+        answer: q.answer || q.explanation || q.explicacion || "",
+        source: q.source || "Fuente interna",
+      };
+    }),
+  ).filter(
+    (q) =>
+      q.question.length > 20 &&
+      q.options.length === 4 &&
+      q.options.every((option) => option.trim().length > 0) &&
+      q.correctIndex >= 0 &&
+      q.correctIndex < 4 &&
+      !usedQuestionKeys.has(questionKey(q.question)),
+  );
+}
+function rememberQuestions(items) {
+  items.forEach((q) => {
+    usedQuestionKeys.add(questionKey(q.question));
+    usedQuestionTexts.push(q.question);
   });
 }
 
@@ -138,7 +182,7 @@ function localQuestions(pages, count) {
       source: `Fuente interna, página ${x.page}: ${x.text}`,
     });
   }
-  return unique(out);
+  return normalizeQuestions(out);
 }
 
 async function aiQuestions(pages, count) {
@@ -154,6 +198,10 @@ async function aiQuestions(pages, count) {
   const focus = sessionStorage.getItem("medFocus") || "ENAM";
   const level = sessionStorage.getItem("medLevel") || "advanced";
   const format = sessionStorage.getItem("medFormat") || "balanced";
+  const previousQuestions = usedQuestionTexts
+    .slice(-80)
+    .map((key, i) => `${i + 1}. ${key}`)
+    .join("\n");
   const prompt = `Realiza primero un análisis médico interno de todos los PDFs: identifica temas centrales, afirmaciones examinables, perlas ENAM, relaciones causa-efecto, mecanismos fisiopatológicos, criterios diagnósticos, tratamientos, anatomía relevante y errores frecuentes. Después selecciona los conceptos de mayor valor educativo y genera ${count} preguntas de selección múltiple en español. Enfoque: ${focus}. Dificultad: ${level}. Formato: ${format}.
 
 REGLAS OBLIGATORIAS:
@@ -168,8 +216,9 @@ REGLAS OBLIGATORIAS:
 9) La explicación debe justificar la correcta y descartar brevemente cada distractor; solo será visible después de responder.
 10) source debe usar únicamente “Fuente interna, página N” seguido de un fundamento breve, sin nombres de archivos.
 11) Prioriza lo marcado como ENAM, perla, importante, frecuente, diagnóstico, tratamiento, complicación o mecanismo.
+12) No generes preguntas equivalentes a ninguna de las preguntas previas listadas al final.
 
-Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"enunciado autónomo sin mencionar la fuente","options":["A","B","C","D"],"correctIndex":0,"answer":"explicación razonada","source":"Fuente interna, página N: fundamento breve"}]}. MATERIAL PARA ANÁLISIS INTERNO:\n${material}`;
+Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"enunciado autónomo sin mencionar la fuente","options":["A","B","C","D"],"correctIndex":0,"answer":"explicación razonada","source":"Fuente interna, página N: fundamento breve"}]}. PREGUNTAS PREVIAS PROHIBIDAS:\n${previousQuestions || "Ninguna"}\nMATERIAL PARA ANÁLISIS INTERNO:\n${material}`;
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -195,18 +244,7 @@ Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|
   let parsed = JSON.parse(data.choices[0].message.content);
   if (!Array.isArray(parsed))
     parsed = parsed.questions || parsed.cuestionario || [];
-  return unique(
-    parsed.filter(
-      (q) =>
-        q &&
-        typeof q.question === "string" &&
-        Array.isArray(q.options) &&
-        q.options.length === 4 &&
-        Number.isInteger(Number(q.correctIndex)) &&
-        Number(q.correctIndex) >= 0 &&
-        Number(q.correctIndex) < 4,
-    ),
-  );
+  return normalizeQuestions(parsed);
 }
 
 async function process(fileList) {
@@ -228,6 +266,7 @@ async function process(fileList) {
     for (let i = 0; i < files.length; i++) {
       pages.push(...(await extractPdf(files[i], i, files.length)));
     }
+    sourcePages = pages;
     $("#processingTitle").textContent = "Creando preguntas clínicas…";
     $("#processingStatus").textContent =
       "Analizando relaciones, perlas ENAM y conceptos de alta frecuencia.";
@@ -237,6 +276,7 @@ async function process(fileList) {
     if (!questions.length)
       throw Error("No se encontró texto suficiente en el PDF.");
     questions.sort(() => Math.random() - 0.5);
+    rememberQuestions(questions);
     index = 0;
     correct = 0;
     performance = {};
@@ -348,25 +388,37 @@ function next() {
     $("#feedback").classList.add("hidden");
     $("#progressBar").style.width = "100%";
     const summary = $("#resultSummary");
-    summary.innerHTML = `<p class="result-score">${correct}/${questions.length} · ${percentage}%</p><p>Examen completado. El siguiente intento reorganizará las preguntas y alternativas sin recargar la página.</p><div class="result-grid"><div class="result-box"><strong>Fortaleza</strong><span></span></div><div class="result-box"><strong>Por reforzar</strong><span></span></div></div>`;
+    summary.innerHTML = `<p class="result-score">${correct}/${questions.length} · ${percentage}%</p><p>Examen completado. La siguiente iteración analizará nuevamente los PDFs para crear preguntas diferentes sin recargar la página.</p><div class="result-grid"><div class="result-box"><strong>Fortaleza</strong><span></span></div><div class="result-box"><strong>Por reforzar</strong><span></span></div></div>`;
     const labels = summary.querySelectorAll(".result-box span");
     labels[0].textContent = categories[0]?.[0] || "Sin datos suficientes";
     labels[1].textContent = categories.at(-1)?.[0] || "Sin datos suficientes";
     summary.classList.remove("hidden");
   }
 }
-function restartQuiz() {
-  questions.sort(() => Math.random() - 0.5);
-  questions.forEach((q) => {
-    if (!Array.isArray(q.options)) return;
-    const correctOption = q.options[q.correctIndex];
-    q.options.sort(() => Math.random() - 0.5);
-    q.correctIndex = q.options.indexOf(correctOption);
-  });
+async function restartQuiz() {
+  show("#processingView");
+  $("#processingTitle").textContent = "Creando una nueva iteración…";
+  $("#processingStatus").textContent =
+    "Evitando preguntas anteriores y buscando nuevos conceptos evaluables.";
+  const count = +(sessionStorage.getItem("medCount") || 12);
+  const generated = await aiQuestions(sourcePages, count).catch(() => null);
+  const fresh = generated?.length
+    ? generated
+    : localQuestions(sourcePages, count);
+  if (!fresh.length) {
+    alert(
+      "Ya se utilizaron los conceptos disponibles. Agrega más PDFs para crear preguntas nuevas.",
+    );
+    show("#quizView");
+    return;
+  }
+  questions = fresh.sort(() => Math.random() - 0.5);
+  rememberQuestions(questions);
   index = 0;
   correct = 0;
   performance = {};
   render();
+  show("#quizView");
   scrollTo({ top: 0, behavior: "smooth" });
 }
 function formatSize(bytes) {
@@ -439,6 +491,9 @@ $("#skipBtn").onclick = () => {
 };
 $("#newPdfBtn").onclick = () => {
   selectedFiles = [];
+  sourcePages = [];
+  usedQuestionKeys.clear();
+  usedQuestionTexts.length = 0;
   renderFileQueue();
   show("#uploadView");
 };
