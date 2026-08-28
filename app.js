@@ -29,6 +29,57 @@ function unique(items) {
   });
 }
 
+const stopWords = new Set([
+  "para",
+  "como",
+  "desde",
+  "entre",
+  "sobre",
+  "hasta",
+  "donde",
+  "cuando",
+  "este",
+  "esta",
+  "estos",
+  "estas",
+  "también",
+  "mediante",
+  "puede",
+  "debe",
+  "tiene",
+  "cada",
+  "según",
+  "porque",
+  "aunque",
+  "forma",
+  "parte",
+  "nivel",
+]);
+function topicFrom(text) {
+  const normalized = text
+    .replace(/^(nivel|objetivo|perla|enam|importante)\s*[^:]{0,25}:\s*/i, "")
+    .replace(/[^a-záéíóúñü\s-]/gi, " ");
+  const words = normalized
+    .split(/\s+/)
+    .filter((word) => word.length > 4 && !stopWords.has(word.toLowerCase()));
+  return [...new Set(words.map((word) => word.toLowerCase()))]
+    .slice(0, 4)
+    .join(", ");
+}
+function localStem(text, number) {
+  const definition = text.match(
+    /^(.{5,90}?)\s+(?:es|son|se define como|consiste en)\s+(.{20,})$/i,
+  );
+  if (definition)
+    return `¿Cuál es la descripción correcta de ${clean(definition[1])}?`;
+  const colon = text.match(/^(.{5,80}?):\s+(.{20,})$/);
+  if (colon) return `¿Qué afirmación explica correctamente ${clean(colon[1])}?`;
+  const topic = topicFrom(text);
+  return topic
+    ? `En relación con ${topic}, ¿cuál de las siguientes afirmaciones es correcta?`
+    : `Pregunta conceptual ${number}: ¿cuál de las siguientes afirmaciones es correcta?`;
+}
+
 async function extractPdf(file, fileIndex, fileTotal) {
   if (file.size > 50 * 1024 * 1024) throw Error("El PDF supera 50 MB.");
   const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() })
@@ -79,7 +130,7 @@ function localQuestions(pages, count) {
       .sort(() => Math.random() - 0.5);
     out.push({
       type: "Concepto clave",
-      question: `Pregunta ${i + 1}: ¿cuál de las siguientes afirmaciones describe correctamente el concepto médico evaluado?`,
+      question: localStem(x.text, i + 1),
       answer: x.text,
       mode: written ? "written" : "choice",
       options,
