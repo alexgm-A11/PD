@@ -19,17 +19,6 @@
           ><span class="brand-mark">M</span
           ><span>Médica<span class="accent">Mente</span></span></a
         >
-        <div class="ai-control">
-          <span id="aiStatus" class="ai-status">IA no configurada</span>
-          <button
-            id="settingsBtn"
-            class="icon-btn"
-            type="button"
-            aria-label="Configurar IA"
-          >
-            ⚙
-          </button>
-        </div>
       </header>
 
       <section id="uploadView" class="hero">
@@ -205,44 +194,6 @@
         </div>
       </section>
     </main>
-
-    <dialog id="settingsDialog">
-      <form method="dialog" class="settings">
-        <div class="dialog-head">
-          <h2>Configuración de IA</h2>
-          <button value="cancel" class="icon-btn" aria-label="Cerrar">×</button>
-        </div>
-        <p>
-          La IA es obligatoria para analizar los PDFs y producir preguntas
-          fundamentadas. Conecta un endpoint compatible con OpenAI. La clave
-          solo se conserva en esta pestaña.
-        </p>
-        <label
-          >Endpoint<input
-            id="endpointInput"
-            value="https://api.openai.com/v1/chat/completions"
-        /></label>
-        <label>Modelo<input id="modelInput" value="gpt-4.1" /></label>
-        <label
-          >API key<input
-            id="keyInput"
-            type="password"
-            placeholder="sk-…"
-            autocomplete="off"
-        /></label>
-        <label
-          >Número de preguntas<input
-            id="countInput"
-            type="number"
-            min="6"
-            max="40"
-            value="15"
-        /></label>
-        <button id="saveSettings" class="primary" value="default">
-          Guardar
-        </button>
-      </form>
-    </dialog>
 
     <script
       src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/pdf.min.mjs"
