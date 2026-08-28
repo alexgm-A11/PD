@@ -19,14 +19,17 @@
           ><span class="brand-mark">M</span
           ><span>Médica<span class="accent">Mente</span></span></a
         >
-        <button
-          id="settingsBtn"
-          class="icon-btn"
-          type="button"
-          aria-label="Configurar IA"
-        >
-          ⚙
-        </button>
+        <div class="ai-control">
+          <span id="aiStatus" class="ai-status">IA no configurada</span>
+          <button
+            id="settingsBtn"
+            class="icon-btn"
+            type="button"
+            aria-label="Configurar IA"
+          >
+            ⚙
+          </button>
+        </div>
       </header>
 
       <section id="uploadView" class="hero">
@@ -210,17 +213,16 @@
           <button value="cancel" class="icon-btn" aria-label="Cerrar">×</button>
         </div>
         <p>
-          Activa el análisis clínico profundo conectando un endpoint compatible
-          con OpenAI. Sin clave, el sistema usa análisis local y genera
-          preguntas conceptuales seguras. La clave solo se conserva en esta
-          pestaña.
+          La IA es obligatoria para analizar los PDFs y producir preguntas
+          fundamentadas. Conecta un endpoint compatible con OpenAI. La clave
+          solo se conserva en esta pestaña.
         </p>
         <label
           >Endpoint<input
             id="endpointInput"
             value="https://api.openai.com/v1/chat/completions"
         /></label>
-        <label>Modelo<input id="modelInput" value="gpt-4.1-mini" /></label>
+        <label>Modelo<input id="modelInput" value="gpt-4.1" /></label>
         <label
           >API key<input
             id="keyInput"
