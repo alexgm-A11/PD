@@ -27,7 +27,7 @@ function unique(items) {
   });
 }
 
-async function extractPdf(file) {
+async function extractPdf(file, fileIndex, fileTotal) {
   if (file.size > 50 * 1024 * 1024) throw Error("El PDF supera 50 MB.");
   const doc = await pdfjsLib.getDocument({ data: await file.arrayBuffer() })
     .promise;
@@ -35,16 +35,24 @@ async function extractPdf(file) {
   for (let i = 1; i <= doc.numPages; i++) {
     const p = await doc.getPage(i),
       c = await p.getTextContent();
-    pages.push({ page: i, text: clean(c.items.map((x) => x.str).join(" ")) });
+    pages.push({
+      page: i,
+      document: file.name,
+      text: clean(c.items.map((x) => x.str).join(" ")),
+    });
     $("#processingStatus").textContent =
-      `Leyendo página ${i} de ${doc.numPages}…`;
+      `PDF ${fileIndex + 1} de ${fileTotal}: ${file.name} · página ${i} de ${doc.numPages}`;
   }
   return pages;
 }
 
 function localQuestions(pages, count) {
   const all = pages.flatMap((p) =>
-    sentences(p.text).map((text) => ({ text, page: p.page })),
+    sentences(p.text).map((text) => ({
+      text,
+      page: p.page,
+      document: p.document,
+    })),
   );
   const priority = all.filter((x) =>
     /ENAM|perla|frecuen|diagn[oó]st|tratamiento|signo|s[ií]ndrome|complicaci[oó]n|arteria|nervio|microorganismo|fisiopat/i.test(
@@ -57,8 +65,8 @@ function localQuestions(pages, count) {
   const out = [];
   for (let i = 0; i < Math.min(count, pool.length); i++) {
     const x = pool[(i * 7) % pool.length];
-    const clinical = i < count / 2;
-    const written = i % 5 === 4;
+    const clinical = false;
+    const written = false;
     const distractors = [1, 2, 3].map(
       (step) =>
         pool[(i * 7 + step * 5) % pool.length]?.text ||
@@ -68,15 +76,13 @@ function localQuestions(pages, count) {
       .map((text) => text.slice(0, 210))
       .sort(() => Math.random() - 0.5);
     out.push({
-      type: clinical ? "Caso clínico" : "Recuerdo activo",
-      question: clinical
-        ? `Un paciente presenta un cuadro relacionado con el siguiente hallazgo del material: “${x.text.slice(0, 180)}${x.text.length > 180 ? "…" : ""}”. Integra los datos y explica el diagnóstico más probable, el mecanismo fisiopatológico y la conducta inicial.`
-        : `A partir del tema descrito en el material, define con precisión el concepto central de “${x.text.slice(0, 150)}${x.text.length > 150 ? "…" : ""}” y explica sus relaciones anatómicas, fisiológicas o microbiológicas relevantes.`,
+      type: "Concepto clave",
+      question: `Según el contenido estudiado en ${x.document}, ¿cuál de las siguientes afirmaciones es correcta?`,
       answer: x.text,
       mode: written ? "written" : "choice",
       options,
       correctIndex: options.indexOf(x.text.slice(0, 210)),
-      source: `Página ${x.page}: ${x.text}`,
+      source: `${x.document}, página ${x.page}: ${x.text}`,
     });
   }
   return unique(out);
@@ -89,10 +95,13 @@ async function aiQuestions(pages, count) {
     sessionStorage.getItem("medEndpoint") || $("#endpointInput").value;
   const model = sessionStorage.getItem("medModel") || $("#modelInput").value;
   const material = pages
-    .map((p) => `[Página ${p.page}] ${p.text}`)
+    .map((p) => `[Documento: ${p.document} | Página ${p.page}] ${p.text}`)
     .join("\n")
-    .slice(0, 90000);
-  const prompt = `Genera ${count} preguntas médicas avanzadas en español basadas exclusivamente en el documento. El 80% debe ser de selección múltiple con 4 alternativas plausibles y una sola correcta; el 20% puede ser de respuesta escrita integradora. Mitad casos clínicos estilo USMLE Step 2 y mitad recuerdo anatómico/fisiológico/microbiológico. Prioriza perlas ENAM y alta frecuencia, sin repetir conceptos. Distribuye la respuesta correcta aleatoriamente entre A, B, C y D. Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Recuerdo activo|Integradora","mode":"choice|written","question":"...","options":["A","B","C","D"],"correctIndex":0,"answer":"explicación detallada","source":"Página N: fragmento breve"}]}. En preguntas escritas usa options [] y correctIndex -1. Documento:\n${material}`;
+    .slice(0, 180000);
+  const focus = sessionStorage.getItem("medFocus") || "ENAM";
+  const level = sessionStorage.getItem("medLevel") || "advanced";
+  const format = sessionStorage.getItem("medFormat") || "balanced";
+  const prompt = `Analiza de forma conjunta todos los PDFs y genera ${count} preguntas médicas de selección múltiple en español. Enfoque solicitado: ${focus}. Dificultad: ${level}. Formato: ${format}. REGLAS OBLIGATORIAS: 1) El enunciado nunca debe copiar, citar ni mostrar la frase que contiene la respuesta. 2) No reveles la respuesta correcta en el contexto ni uses pistas obvias. 3) Si el material contiene información clínica suficiente, crea casos clínicos nuevos y coherentes con edad, síntomas, antecedentes y hallazgos; no inventes datos que contradigan la fuente. 4) Si no hay base clínica suficiente, formula preguntas conceptuales directas, sin forzar casos clínicos. 5) Cada pregunta tiene exactamente 4 alternativas plausibles y una sola correcta. 6) Distribuye correctIndex de forma equilibrada y aleatoria entre 0, 1, 2 y 3. 7) No repitas preguntas, conceptos ni alternativas. 8) Prioriza contenido resaltado textual, perlas ENAM y temas de alta frecuencia. 9) La explicación aparece solo después de responder. 10) Cita documento y página en source. Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"enunciado sin respuesta","options":["alternativa A","alternativa B","alternativa C","alternativa D"],"correctIndex":0,"answer":"explicación razonada de la opción correcta y por qué las demás no lo son","source":"Documento X, página N: fundamento breve"}]}. MATERIAL:\n${material}`;
   const res = await fetch(endpoint, {
     method: "POST",
     headers: {
@@ -117,22 +126,43 @@ async function aiQuestions(pages, count) {
   let parsed = JSON.parse(data.choices[0].message.content);
   if (!Array.isArray(parsed))
     parsed = parsed.questions || parsed.cuestionario || [];
-  return unique(parsed);
+  return unique(
+    parsed.filter(
+      (q) =>
+        q &&
+        typeof q.question === "string" &&
+        Array.isArray(q.options) &&
+        q.options.length === 4 &&
+        Number.isInteger(Number(q.correctIndex)) &&
+        Number(q.correctIndex) >= 0 &&
+        Number(q.correctIndex) < 4,
+    ),
+  );
 }
 
-async function process(file) {
+async function process(fileList) {
   try {
-    sourceName = file.name;
+    const files = Array.from(fileList || []).filter(
+      (file) =>
+        file.type === "application/pdf" ||
+        file.name.toLowerCase().endsWith(".pdf"),
+    );
+    if (!files.length) throw Error("Selecciona al menos un archivo PDF.");
+    if (files.length > 10) throw Error("Puedes subir un máximo de 10 PDFs.");
+    sourceName =
+      files.length === 1 ? files[0].name : `${files.length} PDFs combinados`;
     show("#processingView");
-    $("#processingTitle").textContent = "Leyendo tu PDF…";
-    const pages = await extractPdf(file);
+    $("#processingTitle").textContent = "Leyendo tus PDFs…";
+    const pages = [];
+    for (let i = 0; i < files.length; i++) {
+      pages.push(...(await extractPdf(files[i], i, files.length)));
+    }
     $("#processingTitle").textContent = "Creando preguntas clínicas…";
     $("#processingStatus").textContent =
-      "Priorizando perlas ENAM y conceptos de alta frecuencia.";
+      "Analizando relaciones, perlas ENAM y conceptos de alta frecuencia.";
     const count = +(sessionStorage.getItem("medCount") || 12);
-    questions =
-      (await aiQuestions(pages, count).catch(() => null)) ||
-      localQuestions(pages, count);
+    const generated = await aiQuestions(pages, count).catch(() => null);
+    questions = generated?.length ? generated : localQuestions(pages, count);
     if (!questions.length)
       throw Error("No se encontró texto suficiente en el PDF.");
     questions.sort(() => Math.random() - 0.5);
@@ -237,7 +267,7 @@ function next() {
 }
 $("#pdfInput").addEventListener(
   "change",
-  (e) => e.target.files[0] && process(e.target.files[0]),
+  (e) => e.target.files.length && process(e.target.files),
 );
 const dz = $("#dropzone");
 ["dragenter", "dragover"].forEach((x) =>
@@ -252,10 +282,7 @@ const dz = $("#dropzone");
     dz.classList.remove("drag");
   }),
 );
-dz.addEventListener("drop", (e) => {
-  const f = e.dataTransfer.files[0];
-  if (f?.type === "application/pdf") process(f);
-});
+dz.addEventListener("drop", (e) => process(e.dataTransfer.files));
 $("#submitBtn").onclick = evaluate;
 $("#nextBtn").onclick = next;
 $("#skipBtn").onclick = () => {
