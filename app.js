@@ -202,49 +202,62 @@ async function aiQuestions(pages, count) {
     .slice(-80)
     .map((key, i) => `${i + 1}. ${key}`)
     .join("\n");
-  const prompt = `Realiza primero un análisis médico interno de todos los PDFs: identifica temas centrales, afirmaciones examinables, perlas ENAM, relaciones causa-efecto, mecanismos fisiopatológicos, criterios diagnósticos, tratamientos, anatomía relevante y errores frecuentes. Después selecciona los conceptos de mayor valor educativo y genera ${count} preguntas de selección múltiple en español. Enfoque: ${focus}. Dificultad: ${level}. Formato: ${format}.
+  async function requestAI(system, prompt, temperature = 0.25) {
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+        temperature,
+        response_format: { type: "json_object" },
+      }),
+    });
+    if (!res.ok) throw Error(`La IA respondió ${res.status}`);
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || "{}";
+    return JSON.parse(content.replace(/^```(?:json)?\s*|\s*```$/g, ""));
+  }
 
-REGLAS OBLIGATORIAS:
-1) Evalúa el contenido interno; nunca menciones nombres de archivos, PDFs, documentos, diapositivas, autores ni expresiones como “según el material”.
-2) El enunciado no puede copiar ni citar la oración que contiene la respuesta. Tampoco debe revelar la respuesta con pistas léxicas.
-3) Cuando haya base clínica, transforma el conocimiento en un caso clínico nuevo, breve y realista con datos discriminativos. Pregunta por diagnóstico, mecanismo, prueba confirmatoria, complicación o conducta.
-4) Cuando no haya base clínica suficiente, crea una pregunta conceptual clara. No inventes pacientes ni datos clínicos sin sustento.
-5) Integra conceptos de distintos apartados cuando exista una relación médica válida.
-6) Cada pregunta tiene exactamente cuatro alternativas plausibles, homogéneas en longitud y categoría, con una sola correcta.
-7) Los distractores deben representar errores clínicos razonables; evita opciones absurdas, “todas”, “ninguna” y pistas gramaticales.
-8) Equilibra y aleatoriza correctIndex entre 0, 1, 2 y 3. No repitas conceptos, casos ni alternativas.
-9) La explicación debe justificar la correcta y descartar brevemente cada distractor; solo será visible después de responder.
-10) source debe usar únicamente “Fuente interna, página N” seguido de un fundamento breve, sin nombres de archivos.
-11) Prioriza lo marcado como ENAM, perla, importante, frecuente, diagnóstico, tratamiento, complicación o mecanismo.
-12) No generes preguntas equivalentes a ninguna de las preguntas previas listadas al final.
+  $("#processingTitle").textContent = "Etapa 1 de 3 · Analizando contenido";
+  $("#processingStatus").textContent =
+    "Extrayendo hechos examinables, relaciones, mecanismos y posibles casos clínicos.";
+  const analysis = await requestAI(
+    "Eres un analista médico riguroso. No redactes preguntas todavía. Extrae conocimiento verificable solo de la fuente.",
+    `Analiza el material y devuelve JSON {"units":[{"topic":"","fact":"","mechanism":"","clinicalUse":"","commonError":"","clinicalPotential":true,"page":1,"priority":"alta|media"}]}. Crea al menos ${Math.max(count * 2, 20)} unidades diversas. Separa hechos distintos, identifica qué puede convertirse legítimamente en caso clínico y conserva la página. Prioriza ${focus} con dificultad ${level}. No menciones nombres de archivos en los campos. MATERIAL:\n${material}`,
+    0.15,
+  );
 
-Devuelve SOLO JSON válido: {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"enunciado autónomo sin mencionar la fuente","options":["A","B","C","D"],"correctIndex":0,"answer":"explicación razonada","source":"Fuente interna, página N: fundamento breve"}]}. PREGUNTAS PREVIAS PROHIBIDAS:\n${previousQuestions || "Ninguna"}\nMATERIAL PARA ANÁLISIS INTERNO:\n${material}`;
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        {
-          role: "system",
-          content:
-            "Eres un comité de docentes médicos expertos en razonamiento clínico, ENAM y diseño psicométrico. Analiza primero, redacta después y evita cualquier filtración de la respuesta.",
-        },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.45,
-      response_format: { type: "json_object" },
-    }),
-  });
-  if (!res.ok) throw Error(`La IA respondió ${res.status}`);
-  const data = await res.json();
-  let parsed = JSON.parse(data.choices[0].message.content);
-  if (!Array.isArray(parsed))
-    parsed = parsed.questions || parsed.cuestionario || [];
-  return normalizeQuestions(parsed);
+  $("#processingTitle").textContent = "Etapa 2 de 3 · Redactando preguntas";
+  $("#processingStatus").textContent =
+    "Construyendo enunciados autónomos y distractores clínicamente plausibles.";
+  const draft = await requestAI(
+    "Eres un comité de docentes médicos expertos en ENAM, razonamiento clínico y psicometría. Redacta preguntas claras, autosuficientes y sin pistas.",
+    `Genera exactamente ${count} preguntas usando las unidades analizadas. Formato solicitado: ${format}. REGLAS: no menciones archivos, PDFs, fuentes ni “el material”; no copies el hecho correcto en el enunciado; el contexto debe aportar datos para razonar sin contener la respuesta; usa casos clínicos solo cuando clinicalPotential sea verdadero; si no, formula una pregunta conceptual específica; crea cuatro opciones homogéneas y plausibles; una sola correcta; distribuye correctIndex equilibradamente; evita “todas/ninguna”; no repitas conceptos ni estas preguntas previas:\n${previousQuestions || "Ninguna"}\nDevuelve {"questions":[{"type":"Caso clínico|Concepto clave|Integradora","mode":"choice","question":"","options":["","","",""],"correctIndex":0,"answer":"justifica la correcta y descarta las otras tres","source":"Fuente interna, página N: fundamento"}]}. UNIDADES ANALIZADAS:\n${JSON.stringify(analysis).slice(0, 100000)}`,
+    0.35,
+  );
+
+  $("#processingTitle").textContent = "Etapa 3 de 3 · Auditando calidad";
+  $("#processingStatus").textContent =
+    "Eliminando ambigüedades, pistas involuntarias y respuestas expuestas.";
+  const audited = await requestAI(
+    "Eres un revisor psicométrico médico estricto. Corrige preguntas defectuosas y devuelve únicamente la versión final.",
+    `Audita cada pregunta. Reescribe cualquier enunciado que revele la respuesta, dependa de conocer el documento, carezca de contexto, tenga más de una respuesta defendible, use distractores absurdos o no esté sustentado por las unidades. Comprueba silenciosamente que correctIndex corresponda realmente a la opción correcta. Conserva exactamente ${count} preguntas, cuatro opciones por pregunta y el esquema JSON original. Devuelve {"questions":[...]}. BORRADOR:\n${JSON.stringify(draft).slice(0, 100000)}\nUNIDADES DE VERIFICACIÓN:\n${JSON.stringify(analysis).slice(0, 70000)}`,
+    0.1,
+  );
+  const parsed = audited.questions || audited.cuestionario || audited;
+  const finalQuestions = normalizeQuestions(parsed);
+  if (finalQuestions.length >= Math.min(count, 5))
+    return finalQuestions.slice(0, count);
+  return normalizeQuestions(
+    draft.questions || draft.cuestionario || draft,
+  ).slice(0, count);
 }
 
 async function process(fileList) {
