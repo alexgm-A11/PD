@@ -64,6 +64,19 @@ body {
   font-size: 22px;
   padding: 10px;
 }
+.ai-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ai-status {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--danger);
+}
+.ai-status.ready {
+  color: var(--green);
+}
 .hero {
   max-width: 1060px;
   margin: 74px auto 0;
