@@ -98,6 +98,12 @@ const stopWords = new Set([
   "forma",
   "parte",
   "nivel",
+  "ubica",
+  "ubicado",
+  "profundamente",
+  "consta",
+  "formado",
+  "localiza",
 ]);
 function topicFrom(text) {
   const normalized = text
@@ -111,6 +117,11 @@ function topicFrom(text) {
     .join(", ");
 }
 function localStem(text, number) {
+  const relation = text.match(
+    /^(.{3,75}?)\s+(?:se ubica|se localiza|consta de|está formado por|recibe|inerva|produce|participa en)\s+(.{15,})$/i,
+  );
+  if (relation)
+    return `Respecto a ${clean(relation[1])}, ¿cuál de las siguientes afirmaciones es correcta?`;
   const definition = text.match(
     /^(.{5,90}?)\s+(?:es|son|se define como|consiste en)\s+(.{20,})$/i,
   );
@@ -262,10 +273,6 @@ async function aiQuestions(pages, count) {
 
 async function process(fileList) {
   try {
-    if (!sessionStorage.getItem("medKey")) {
-      $("#settingsDialog").showModal();
-      throw Error("Configura la API key para activar el análisis real con IA.");
-    }
     const files = Array.from(fileList || []).filter(
       (file) =>
         file.type === "application/pdf" ||
@@ -288,12 +295,9 @@ async function process(fileList) {
     $("#processingStatus").textContent =
       "Analizando relaciones, perlas ENAM y conceptos de alta frecuencia.";
     const count = +(sessionStorage.getItem("medCount") || 12);
-    const generated = await aiQuestions(pages, count);
-    questions = generated || [];
+    questions = localQuestions(pages, count);
     if (!questions.length)
-      throw Error(
-        "La IA no pudo crear preguntas válidas. Revisa la configuración e inténtalo nuevamente.",
-      );
+      throw Error("No se encontró contenido suficiente para crear preguntas.");
     questions.sort(() => Math.random() - 0.5);
     rememberQuestions(questions);
     index = 0;
@@ -420,11 +424,7 @@ async function restartQuiz() {
   $("#processingStatus").textContent =
     "Evitando preguntas anteriores y buscando nuevos conceptos evaluables.";
   const count = +(sessionStorage.getItem("medCount") || 12);
-  const generated = await aiQuestions(sourcePages, count).catch((error) => {
-    alert(`No fue posible generar la nueva iteración: ${error.message}`);
-    return null;
-  });
-  const fresh = generated || [];
+  const fresh = localQuestions(sourcePages, count);
   if (!fresh.length) {
     alert(
       "Ya se utilizaron los conceptos disponibles. Agrega más PDFs para crear preguntas nuevas.",
@@ -517,20 +517,4 @@ $("#newPdfBtn").onclick = () => {
   renderFileQueue();
   show("#uploadView");
 };
-$("#settingsBtn").onclick = () => $("#settingsDialog").showModal();
-$("#saveSettings").onclick = () => {
-  const key = $("#keyInput").value.trim();
-  if (key) sessionStorage.setItem("medKey", key);
-  else sessionStorage.removeItem("medKey");
-  sessionStorage.setItem("medEndpoint", $("#endpointInput").value);
-  sessionStorage.setItem("medModel", $("#modelInput").value);
-  sessionStorage.setItem("medCount", $("#countInput").value);
-  updateAIStatus();
-};
-function updateAIStatus() {
-  const ready = Boolean(sessionStorage.getItem("medKey"));
-  $("#aiStatus").textContent = ready ? "IA configurada" : "IA no configurada";
-  $("#aiStatus").classList.toggle("ready", ready);
-}
-updateAIStatus();
 
