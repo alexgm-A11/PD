@@ -72,6 +72,25 @@ function rememberQuestions(items) {
     usedQuestionTexts.push(q.question);
   });
 }
+async function backendQuestions(pages, count) {
+  if (location.protocol === "file:")
+    throw Error(
+      "Inicia el servidor con npm start y abre http://localhost:3000",
+    );
+  const response = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      pages,
+      count,
+      previousQuestions: usedQuestionTexts.slice(-80),
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok)
+    throw Error(data.error || "No se pudo completar el análisis");
+  return normalizeQuestions(data.questions || []);
+}
 
 const stopWords = new Set([
   "para",
@@ -295,7 +314,7 @@ async function process(fileList) {
     $("#processingStatus").textContent =
       "Analizando relaciones, perlas ENAM y conceptos de alta frecuencia.";
     const count = +(sessionStorage.getItem("medCount") || 12);
-    questions = localQuestions(pages, count);
+    questions = await backendQuestions(pages, count);
     if (!questions.length)
       throw Error("No se encontró contenido suficiente para crear preguntas.");
     questions.sort(() => Math.random() - 0.5);
@@ -424,7 +443,10 @@ async function restartQuiz() {
   $("#processingStatus").textContent =
     "Evitando preguntas anteriores y buscando nuevos conceptos evaluables.";
   const count = +(sessionStorage.getItem("medCount") || 12);
-  const fresh = localQuestions(sourcePages, count);
+  const fresh = await backendQuestions(sourcePages, count).catch((error) => {
+    alert(error.message);
+    return [];
+  });
   if (!fresh.length) {
     alert(
       "Ya se utilizaron los conceptos disponibles. Agrega más PDFs para crear preguntas nuevas.",
