@@ -115,6 +115,65 @@ body {
   background: var(--card);
   box-shadow: var(--shadow);
 }
+.file-queue {
+  max-width: 680px;
+  margin: 16px auto 0;
+  padding: 20px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  text-align: left;
+}
+.queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.queue-head span {
+  color: var(--muted);
+  font-size: 13px;
+}
+.file-queue ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+.file-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.file-info {
+  min-width: 0;
+}
+.file-info strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+.file-info span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.remove-file {
+  border: 0;
+  background: transparent;
+  color: var(--danger);
+  font:
+    600 13px "Manrope",
+    sans-serif;
+  cursor: pointer;
+  padding: 8px;
+}
+.accept-files {
+  width: 100%;
+}
 .upload-icon {
   display: grid;
   place-items: center;
