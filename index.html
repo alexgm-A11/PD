@@ -43,14 +43,30 @@
             id="pdfInput"
             type="file"
             accept="application/pdf,.pdf"
-            multiple
             hidden
           />
           <span class="upload-icon">↥</span>
-          <strong>Arrastra hasta 10 PDFs aquí</strong>
-          <span>o haz clic para seleccionarlos</span>
-          <small>1–10 archivos PDF · máximo 50 MB por archivo</small>
+          <strong>Agrega un PDF</strong>
+          <span
+            >Haz clic o arrastra un archivo; después puedes agregar otro</span
+          >
+          <small>Hasta 10 archivos PDF · máximo 50 MB por archivo</small>
         </label>
+
+        <div id="fileQueue" class="file-queue hidden" aria-live="polite">
+          <div class="queue-head">
+            <strong>PDFs seleccionados</strong>
+            <span id="fileCount">0 de 10</span>
+          </div>
+          <ul id="fileList"></ul>
+          <button
+            id="acceptFilesBtn"
+            class="primary accept-files"
+            type="button"
+          >
+            Aceptar y analizar
+          </button>
+        </div>
 
         <div class="quick-options" aria-label="Opciones del cuestionario">
           <label
