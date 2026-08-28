@@ -262,6 +262,10 @@ async function aiQuestions(pages, count) {
 
 async function process(fileList) {
   try {
+    if (!sessionStorage.getItem("medKey")) {
+      $("#settingsDialog").showModal();
+      throw Error("Configura la API key para activar el análisis real con IA.");
+    }
     const files = Array.from(fileList || []).filter(
       (file) =>
         file.type === "application/pdf" ||
@@ -284,10 +288,12 @@ async function process(fileList) {
     $("#processingStatus").textContent =
       "Analizando relaciones, perlas ENAM y conceptos de alta frecuencia.";
     const count = +(sessionStorage.getItem("medCount") || 12);
-    const generated = await aiQuestions(pages, count).catch(() => null);
-    questions = generated?.length ? generated : localQuestions(pages, count);
+    const generated = await aiQuestions(pages, count);
+    questions = generated || [];
     if (!questions.length)
-      throw Error("No se encontró texto suficiente en el PDF.");
+      throw Error(
+        "La IA no pudo crear preguntas válidas. Revisa la configuración e inténtalo nuevamente.",
+      );
     questions.sort(() => Math.random() - 0.5);
     rememberQuestions(questions);
     index = 0;
@@ -414,10 +420,11 @@ async function restartQuiz() {
   $("#processingStatus").textContent =
     "Evitando preguntas anteriores y buscando nuevos conceptos evaluables.";
   const count = +(sessionStorage.getItem("medCount") || 12);
-  const generated = await aiQuestions(sourcePages, count).catch(() => null);
-  const fresh = generated?.length
-    ? generated
-    : localQuestions(sourcePages, count);
+  const generated = await aiQuestions(sourcePages, count).catch((error) => {
+    alert(`No fue posible generar la nueva iteración: ${error.message}`);
+    return null;
+  });
+  const fresh = generated || [];
   if (!fresh.length) {
     alert(
       "Ya se utilizaron los conceptos disponibles. Agrega más PDFs para crear preguntas nuevas.",
@@ -512,9 +519,18 @@ $("#newPdfBtn").onclick = () => {
 };
 $("#settingsBtn").onclick = () => $("#settingsDialog").showModal();
 $("#saveSettings").onclick = () => {
-  sessionStorage.setItem("medKey", $("#keyInput").value);
+  const key = $("#keyInput").value.trim();
+  if (key) sessionStorage.setItem("medKey", key);
+  else sessionStorage.removeItem("medKey");
   sessionStorage.setItem("medEndpoint", $("#endpointInput").value);
   sessionStorage.setItem("medModel", $("#modelInput").value);
   sessionStorage.setItem("medCount", $("#countInput").value);
+  updateAIStatus();
 };
+function updateAIStatus() {
+  const ready = Boolean(sessionStorage.getItem("medKey"));
+  $("#aiStatus").textContent = ready ? "IA configurada" : "IA no configurada";
+  $("#aiStatus").classList.toggle("ready", ready);
+}
+updateAIStatus();
 
